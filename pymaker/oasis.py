@@ -95,10 +95,10 @@ class LogMake:
     def __init__(self, log):
         self.order_id = bytes_to_int(log['args']['id'])
         self.maker = Address(log['args']['maker'])
-        self.pay_token = Address(log['args']['pay_gem'])
-        self.pay_amount = Wad(log['args']['pay_amt'])
-        self.buy_token = Address(log['args']['buy_gem'])
-        self.buy_amount = Wad(log['args']['buy_amt'])
+        self.pay_token = Address(log['args']['sellGem'])
+        self.pay_amount = Wad(log['args']['sellAmt'])
+        self.buy_token = Address(log['args']['buyGem'])
+        self.buy_amount = Wad(log['args']['buyAmt'])
         self.timestamp = log['args']['timestamp']
         self.raw = log
 
@@ -118,30 +118,15 @@ class LogMake:
         return pformat(vars(self))
 
 
-class LogBump:
-    def __init__(self, log):
-        self.order_id = bytes_to_int(log['args']['id'])
-        self.maker = Address(log['args']['maker'])
-        self.pay_token = Address(log['args']['pay_gem'])
-        self.pay_amount = Wad(log['args']['pay_amt'])
-        self.buy_token = Address(log['args']['buy_gem'])
-        self.buy_amount = Wad(log['args']['buy_amt'])
-        self.timestamp = log['args']['timestamp']
-        self.raw = log
-
-    def __repr__(self):
-        return pformat(vars(self))
-
-
 class LogTake:
     def __init__(self, log):
         self.order_id = bytes_to_int(log['args']['id'])
         self.maker = Address(log['args']['maker'])
         self.taker = Address(log['args']['taker'])
-        self.pay_token = Address(log['args']['pay_gem'])
-        self.take_amount = Wad(log['args']['take_amt'])
-        self.buy_token = Address(log['args']['buy_gem'])
-        self.give_amount = Wad(log['args']['give_amt'])
+        self.pay_token = Address(log['args']['sellGem'])
+        self.take_amount = Wad(log['args']['takeAmt'])
+        self.buy_token = Address(log['args']['buyGem'])
+        self.give_amount = Wad(log['args']['giveAmt'])
         self.timestamp = log['args']['timestamp']
         self.raw = log
 
@@ -168,10 +153,10 @@ class LogKill:
     def __init__(self, log):
         self.order_id = bytes_to_int(log['args']['id'])
         self.maker = Address(log['args']['maker'])
-        self.pay_token = Address(log['args']['pay_gem'])
-        self.pay_amount = Wad(log['args']['pay_amt'])
-        self.buy_token = Address(log['args']['buy_gem'])
-        self.buy_amount = Wad(log['args']['buy_amt'])
+        self.pay_token = Address(log['args']['sellGem'])
+        self.pay_amount = Wad(log['args']['sellAmt'])
+        self.buy_token = Address(log['args']['buyGem'])
+        self.buy_amount = Wad(log['args']['buyAmt'])
         self.timestamp = log['args']['timestamp']
         self.raw = log
 
@@ -249,23 +234,6 @@ class SimpleMarket(Contract):
 
         return self._past_events(self._contract, 'LogMake', LogMake, number_of_past_blocks, event_filter)
 
-    def past_bump(self, number_of_past_blocks: int, event_filter: dict = None) -> List[LogBump]:
-        """Synchronously retrieve past LogBump events.
-
-        `LogBump` events are emitted by the Oasis contract every time someone calls the `bump()` function.
-
-        Args:
-            number_of_past_blocks: Number of past Ethereum blocks to retrieve the events from.
-            event_filter: Filter which will be applied to returned events.
-
-        Returns:
-            List of past `LogBump` events represented as :py:class:`pymaker.oasis.LogBump` class.
-        """
-        assert(isinstance(number_of_past_blocks, int))
-        assert(isinstance(event_filter, dict) or (event_filter is None))
-
-        return self._past_events(self._contract, 'LogBump', LogBump, number_of_past_blocks, event_filter)
-
     def past_take(self, number_of_past_blocks: int, event_filter: dict = None) -> List[LogTake]:
         """Synchronously retrieve past LogTake events.
 
@@ -306,7 +274,7 @@ class SimpleMarket(Contract):
         Returns:
             The id of the last order. Returns `0` if no orders have been created at all.
         """
-        return self._contract.call().last_offer_id()
+        return self._contract.call().lastOfferId()
 
     def get_order(self, order_id: int) -> Optional[Order]:
         """Get order details.
@@ -321,12 +289,12 @@ class SimpleMarket(Contract):
         assert(isinstance(order_id, int))
 
         array = self._contract.call().offers(order_id)
-        if array[5] == 0:
+        if array[7] == 0:
             return None
         else:
-            return Order(market=self, order_id=order_id, maker=Address(array[4]), pay_token=Address(array[1]),
-                         pay_amount=Wad(array[0]), buy_token=Address(array[3]), buy_amount=Wad(array[2]),
-                         timestamp=array[5])
+            return Order(market=self, order_id=order_id, maker=Address(array[6]), pay_token=Address(array[3]),
+                         pay_amount=Wad(array[2]), buy_token=Address(array[5]), buy_amount=Wad(array[4]),
+                         timestamp=array[7])
 
     def get_orders(self, pay_token: Address = None, buy_token: Address = None) -> List[Order]:
         """Get all active orders.
@@ -405,25 +373,8 @@ class SimpleMarket(Contract):
         assert(buy_amount > Wad(0))
 
         return Transact(self, self.web3, self.abi, self.address, self._contract,
-                        'make', [pay_token.address, buy_token.address, pay_amount.value, buy_amount.value], None,
+                        'offer', [pay_amount.value, pay_token.address, buy_amount.value, buy_token.address], None,
                         self._make_order_id_result_function)
-
-    def bump(self, order_id: int) -> Transact:
-        """Bumps an order.
-
-        Bumping an order generates a `LogBump` event, which can make the order reappear
-        in some front-ends relying on the events.
-
-        Args:
-            order_id: Id of the order you want to bump.
-
-        Returns:
-            A :py:class:`pymaker.Transact` instance, which can be used to trigger the transaction.
-        """
-        assert(isinstance(order_id, int))
-
-        return Transact(self, self.web3, self.abi, self.address, self._contract, 'bump',
-                        [int_to_bytes32(order_id)])
 
     def take(self, order_id: int, quantity: Wad) -> Transact:
         """Takes (buys) an order.
@@ -442,8 +393,8 @@ class SimpleMarket(Contract):
         assert(isinstance(order_id, int))
         assert(isinstance(quantity, Wad))
 
-        return Transact(self, self.web3, self.abi, self.address, self._contract, 'take',
-                        [int_to_bytes32(order_id), quantity.value])
+        return Transact(self, self.web3, self.abi, self.address, self._contract, 'buy',
+                        [order_id, quantity.value])
 
     def kill(self, order_id: int) -> Transact:
         """Cancels an existing order.
@@ -459,7 +410,7 @@ class SimpleMarket(Contract):
         """
         assert(isinstance(order_id, int))
 
-        return Transact(self, self.web3, self.abi, self.address, self._contract, 'kill', [int_to_bytes32(order_id)])
+        return Transact(self, self.web3, self.abi, self.address, self._contract, 'cancel', [order_id])
 
     @staticmethod
     def _make_order_id_result_function(receipt):
@@ -550,66 +501,6 @@ class MatchingMarket(ExpiringMarket):
         return MatchingMarket(web3=web3, address=Contract._deploy(web3, MatchingMarket.abi, MatchingMarket.bin,
                                                                   [close_time]), support_address=support_address)
 
-    def is_buy_enabled(self) -> bool:
-        """Checks if direct buy is enabled.
-
-        Returns:
-            `True` if direct buy is enabled, `False` otherwise.
-        """
-        return self._contract.call().buyEnabled()
-
-    def set_buy_enabled(self, buy_enabled: bool) -> Transact:
-        """Enables or disables direct buy.
-
-        Args:
-            buy_enabled: Whether direct buy should be enabled or disabled.
-
-        Returns:
-            A :py:class:`pymaker.Transact` instance, which can be used to trigger the transaction.
-        """
-        assert(isinstance(buy_enabled, bool))
-        return Transact(self, self.web3, self.abi, self.address, self._contract,
-                        'setBuyEnabled', [buy_enabled])
-
-    def is_matching_enabled(self) -> bool:
-        """Checks if order matching is enabled.
-
-        Returns:
-            `True` if order matching is enabled, `False` otherwise.
-        """
-        return self._contract.call().matchingEnabled()
-
-    def set_matching_enabled(self, matching_enabled: bool) -> Transact:
-        """Enables or disables order matching.
-
-        Args:
-            matching_enabled: Whether order matching should be enabled or disabled.
-
-        Returns:
-            A :py:class:`pymaker.Transact` instance, which can be used to trigger the transaction.
-        """
-        assert(isinstance(matching_enabled, bool))
-        return Transact(self, self.web3, self.abi, self.address, self._contract,
-                        'setMatchingEnabled', [matching_enabled])
-
-    def add_token_pair_whitelist(self, base_token: Address, quote_token: Address) -> Transact:
-        """Adds a token pair to the whitelist.
-
-        All newly created orders are checked against the whitelist.
-
-        Args:
-            base_token: Address of the ERC20 token.
-            quote_token: Address of the ERC20 token.
-
-        Returns:
-            A :py:class:`pymaker.Transact` instance, which can be used to trigger the transaction.
-        """
-        assert(isinstance(base_token, Address))
-        assert(isinstance(quote_token, Address))
-
-        return Transact(self, self.web3, self.abi, self.address, self._contract,
-                        'addTokenPairWhitelist', [base_token.address, quote_token.address])
-
     def get_orders(self, pay_token: Address = None, buy_token: Address = None) -> List[Order]:
         """Get all active orders.
 
@@ -661,7 +552,7 @@ class MatchingMarket(ExpiringMarket):
                         break
 
             else:
-                order_id = self._contract.call().getBestOffer(pay_token.address, buy_token.address)
+                order_id = self._contract.call().best(pay_token.address, buy_token.address)
                 while order_id != 0:
                     order = self.get_order(order_id)
                     if order is not None:
@@ -719,7 +610,7 @@ class MatchingMarket(ExpiringMarket):
             assert(pos >= 0)
 
         return Transact(self, self.web3, self.abi, self.address, self._contract,
-                        'offer', [pay_amount.value, pay_token.address, buy_amount.value, buy_token.address, pos], None,
+                        'limitOffer', [pay_amount.value, pay_token.address, buy_amount.value, buy_token.address, False, pos], None,
                         self._make_order_id_result_function)
 
     def position(self, pay_token: Address, pay_amount: Wad, buy_token: Address, buy_amount: Wad) -> int:

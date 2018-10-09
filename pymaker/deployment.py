@@ -102,9 +102,6 @@ class Deployment:
         for auth in [sai, sin, skr, gem, gov, pit, tap, top]:
             auth.set_authority(dad.address).transact()
 
-        # whitelist pairs
-        otc.add_token_pair_whitelist(sai.address, gem.address).transact()
-
         # approve
         tub.approve(directly())
         tap.approve(directly())

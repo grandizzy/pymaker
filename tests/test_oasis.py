@@ -252,7 +252,6 @@ class GeneralMarketTest:
 
     def test_no_past_events_on_startup(self):
         assert self.otc.past_make(PAST_BLOCKS) == []
-        assert self.otc.past_bump(PAST_BLOCKS) == []
         assert self.otc.past_take(PAST_BLOCKS) == []
         assert self.otc.past_kill(PAST_BLOCKS) == []
 
@@ -273,25 +272,6 @@ class GeneralMarketTest:
         assert past_make[0].buy_amount == Wad.from_number(2)
         assert past_make[0].timestamp != 0
         assert past_make[0].raw['blockNumber'] > 0
-
-    def test_past_bump(self):
-        # when
-        self.otc.approve([self.token1], directly())
-        self.otc.make(pay_token=self.token1.address, pay_amount=Wad.from_number(1),
-                      buy_token=self.token2.address, buy_amount=Wad.from_number(2)).transact()
-        self.otc.bump(1).transact()
-
-        # then
-        past_bump = self.otc.past_bump(PAST_BLOCKS)
-        assert len(past_bump) == 1
-        assert past_bump[0].order_id == 1
-        assert past_bump[0].maker == self.our_address
-        assert past_bump[0].pay_token == self.token1.address
-        assert past_bump[0].pay_amount == Wad.from_number(1)
-        assert past_bump[0].buy_token == self.token2.address
-        assert past_bump[0].buy_amount == Wad.from_number(2)
-        assert past_bump[0].timestamp != 0
-        assert past_bump[0].raw['blockNumber'] > 0
 
     def test_past_take(self):
         # when
@@ -379,17 +359,8 @@ class TestExpiringMarket(GeneralMarketTest):
             ExpiringMarket(web3=self.web3, address=Address('0xdeadadd1e5500000000000000000000000000000'))
 
     def test_is_closed(self):
-        # when
-        # (market is open)
-
-        # then
+        # expect
         assert self.otc.is_closed() is False
-
-        # when
-        self.otc._contract.transact().stop()
-
-        # then
-        assert self.otc.is_closed() is True
 
     def test_should_have_printable_representation(self):
         assert repr(self.otc) == f"ExpiringMarket('{self.otc.address}')"
@@ -399,9 +370,6 @@ class TestMatchingMarket(GeneralMarketTest):
     def setup_method(self):
         GeneralMarketTest.setup_method(self)
         self.otc = MatchingMarket.deploy(self.web3, 2500000000)
-        self.otc.add_token_pair_whitelist(self.token1.address, self.token2.address).transact()
-        self.otc.add_token_pair_whitelist(self.token1.address, self.token3.address).transact()
-        self.otc.add_token_pair_whitelist(self.token2.address, self.token3.address).transact()
 
     def test_fail_when_no_contract_under_that_address(self):
         # expect
@@ -475,9 +443,6 @@ class TestMatchingMarketWithSupportContract(TestMatchingMarket):
         support_address = Contract._deploy(self.web3, support_abi, support_bin, [])
 
         self.otc = MatchingMarket.deploy(self.web3, 2500000000, support_address)
-        self.otc.add_token_pair_whitelist(self.token1.address, self.token2.address).transact()
-        self.otc.add_token_pair_whitelist(self.token1.address, self.token3.address).transact()
-        self.otc.add_token_pair_whitelist(self.token2.address, self.token3.address).transact()
 
     def test_fail_when_no_support_contract_under_that_address(self):
         # expect
@@ -497,37 +462,10 @@ class TestMatchingMarketPosition:
         self.token2 = DSToken.deploy(self.web3, 'BBB')
         self.token2.mint(Wad.from_number(10000)).transact()
         self.otc = MatchingMarket.deploy(self.web3, 2500000000)
-        self.otc.add_token_pair_whitelist(self.token1.address, self.token2.address).transact()
         self.otc.approve([self.token1, self.token2], directly())
         for amount in [11,55,44,34,36,21,45,51,15]:
             self.otc.make(pay_token=self.token1.address, pay_amount=Wad.from_number(1),
                           buy_token=self.token2.address, buy_amount=Wad.from_number(amount)).transact()
-
-    def test_buy_enabled(self):
-        # when
-        self.otc.set_buy_enabled(False).transact()
-
-        # then
-        assert self.otc.is_buy_enabled() is False
-
-        # when
-        self.otc.set_buy_enabled(True).transact()
-
-        # then
-        assert self.otc.is_buy_enabled() is True
-
-    def test_matching_enabled(self):
-        # when
-        self.otc.set_matching_enabled(False).transact()
-
-        # then
-        assert self.otc.is_matching_enabled() is False
-
-        # when
-        self.otc.set_matching_enabled(True).transact()
-
-        # then
-        assert self.otc.is_matching_enabled() is True
 
     def test_should_calculate_correct_order_position(self):
         # expect
